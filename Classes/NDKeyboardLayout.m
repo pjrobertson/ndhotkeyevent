@@ -288,7 +288,7 @@ NSUInteger NDCarbonModifierFlagsForCocoaModifierFlags( NSUInteger aModifierFlags
 							   &theDeadKeyState,
 							   1,
 							   &theLength,
-							   &mappings[numberOfMappings].character ) == noErr && theLength > 0 && isprint(mappings[numberOfMappings].character) )
+                           &mappings[numberOfMappings].character ) == noErr && theLength > 0 && isprint(mappings[numberOfMappings].character) )
 		{
 			mappings[numberOfMappings].keyCode = i;
 			numberOfMappings++;
@@ -323,17 +323,26 @@ NSUInteger NDCarbonModifierFlagsForCocoaModifierFlags( NSUInteger aModifierFlags
 			mappings[i].keypad = YES;
 		}
 	}
-
+    
+    if (isASCIICapable) {
+        asciimappings = (struct ReverseMappingEntry*)realloc( (void*)mappings, numberOfMappings*sizeof(struct ReverseMappingEntry) );
+        for (NSUInteger i = 0; i <= numberOfMappings; i++) {
+            asciimappings[i] = mappings[i];
+        }
+        numberOfASCIIMappings = numberOfMappings;
+    }
+    
 #ifdef DEBUGGING_CODE
+
 	for( NSUInteger i = 1; i < numberOfMappings; i++ )
 	{
-		fprintf( stderr, "%d -> %c[%d]%s\n",
+		NSLog(@"%d -> %C[%d]%s\n",
 				mappings[i].keyCode,
-				(char)mappings[i].character,
+				mappings[i].character,
 				mappings[i].character,
 				mappings[i].keypad ? " keypad" : ""
 				);
-		NSAssert3( mappings[i-1].character <= mappings[i].character, @"[%d] %d <= %d", i, mappings[i-1].character, mappings[i].character );
+		NSAssert3( mappings[i-1].character <= mappings[i].character, @"[%lu] %d <= %d", i, mappings[i-1].character, mappings[i].character );
 	}
 #endif
 }
@@ -344,9 +353,9 @@ static volatile NDKeyboardLayout		* kCurrentKeyboardLayout = nil;
 
 void NDKeyboardLayoutNotificationCallback( CFNotificationCenterRef aCenter, void * self, CFStringRef aName, const void * anObj, CFDictionaryRef aUserInfo )
 {
-	NSDictionary		* theUserInfo = [NSDictionary dictionaryWithObject:kCurrentKeyboardLayout forKey:NDKeyboardLayoutPreviousKeyboardLayoutUserInfoKey];
-	@synchronized(self) { [kCurrentKeyboardLayout release], kCurrentKeyboardLayout = nil; }
-	[[NSNotificationCenter defaultCenter] postNotificationName:NDKeyboardLayoutSelectedKeyboardInputSourceChangedNotification object:self userInfo:theUserInfo];
+    NSDictionary		* theUserInfo = [NSDictionary dictionaryWithObject:kCurrentKeyboardLayout forKey:NDKeyboardLayoutPreviousKeyboardLayoutUserInfoKey];
+    @synchronized(self) { [kCurrentKeyboardLayout release], kCurrentKeyboardLayout = nil; }
+    [[NSNotificationCenter defaultCenter] postNotificationName:NDKeyboardLayoutSelectedKeyboardInputSourceChangedNotification object:self userInfo:theUserInfo];
 }
 
 + (void)initialize
@@ -403,6 +412,7 @@ void NDKeyboardLayoutNotificationCallback( CFNotificationCenterRef aCenter, void
 	{
 		if( aSource != NULL && (keyboardLayoutData = (CFDataRef)CFMakeCollectable(TISGetInputSourceProperty(aSource, kTISPropertyUnicodeKeyLayoutData))) != nil )
 		{
+            isASCIICapable = (BOOL)TISGetInputSourceProperty(aSource, kTISPropertyInputSourceIsASCIICapable);
 			CFRetain( keyboardLayoutData );
 		}
 		else
@@ -490,17 +500,23 @@ void NDKeyboardLayoutNotificationCallback( CFNotificationCenterRef aCenter, void
 	else
 		theChar  = theEntry->character;
 	return toupper(theChar);
+    
 }
 
 - (UInt16)keyCodeForCharacter:(unichar)aCharacter { return [self keyCodeForCharacter:aCharacter numericPad:NO]; }
 
 - (UInt16)keyCodeForCharacter:(unichar)aCharacter numericPad:(BOOL)aNumericPad
 {
-	struct ReverseMappingEntry	theSearchValue = { tolower(aCharacter), aNumericPad, 0 };
+    aCharacter = [[[NSString stringWithCharacters:&aCharacter length:1] lowercaseString] characterAtIndex:0];
+	struct ReverseMappingEntry	theSearchValue = { aCharacter, aNumericPad, 0 };
 	struct ReverseMappingEntry	* theEntry = NULL;
 	if( mappings == NULL )
 		[self generateMappings];
 	theEntry = _searchreverseMapping( mappings, numberOfMappings, &theSearchValue );
+    // If no match is found, and the current keyboard isn't ASCII capable (Korean, Japanese etc.) we use the last known ASCII keyboard layout to try and find a match
+    if (!theEntry && !isASCIICapable) {
+        theEntry = _searchreverseMapping( asciimappings, numberOfASCIIMappings, &theSearchValue);
+    }  
 	return theEntry ? theEntry->keyCode : '\0';
 }
 

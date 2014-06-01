@@ -58,6 +58,10 @@ NSUInteger NDCocoaModifierFlagsForCarbonModifierFlags( NSUInteger modifierFlags 
  */
 NSUInteger NDCarbonModifierFlagsForCocoaModifierFlags( NSUInteger modifierFlags );
 
+
+NSUInteger                      numberOfASCIIMappings;
+struct ReverseMappingEntry      * asciimappings;
+
 /*!
 	@class NDKeyboardLayout
 	@abstract Class for translating between key codes and key characters.
@@ -70,6 +74,7 @@ NSUInteger NDCarbonModifierFlagsForCocoaModifierFlags( NSUInteger modifierFlags 
 	CFDataRef						keyboardLayoutData;
 	struct ReverseMappingEntry		* mappings;
 	NSUInteger						numberOfMappings;
+    BOOL                            isASCIICapable;
 }
 
 /*!
