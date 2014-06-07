@@ -87,6 +87,10 @@ static BOOL isEqualHashFunction( NSHashTable * aTable, const void * aFirstHotKey
 static NSString * describeHashFunction( NSHashTable * aTable, const void * aHotKeyEvent );
 #endif
 
+static UInt32 _idForKeyCodeAndModifier(UInt16 aKeyCode, NSUInteger aModFlags) {
+    return (NSUInteger)aKeyCode | (aModFlags<<16);
+}
+
 static UInt32 _idForCharacterAndModifer( unichar aCharacter, NSUInteger aModFlags ) { return (NSUInteger)aCharacter | (aModFlags<<16); }
 
 static void _getCharacterAndModiferForId( UInt32 anId, unichar *aCharacter, NSUInteger *aModFlags )
@@ -214,16 +218,17 @@ struct HotKeyMappingEntry
 
 + (instancetype)getHotKeyForKeyCode:(UInt16)aKeyCode modifierFlags:(NSUInteger)aModifierFlags
 {
-	return [self getHotKeyForKeyCharacter:[[NDKeyboardLayout keyboardLayout] characterForKeyCode:aKeyCode] modifierFlags:aModifierFlags];
+    NDHotKeyEvent		* theHotKey = nil;
+    theHotKey = [self findHotKeyForKeyCode:aKeyCode modifierFlags:aModifierFlags];
+    return theHotKey ? theHotKey : [self hotKeyWithKeyCode:aKeyCode modifierFlags:aModifierFlags];
+
 }
 
 #pragma mark - finding hot key event objects
 + (instancetype)getHotKeyForKeyCharacter:(unichar)aKeyCharacter modifierFlags:(NSUInteger)aModifierFlags
 {
-	NDHotKeyEvent		* theHotKey = nil;
-
-	theHotKey = [self findHotKeyForKeyCharacter:aKeyCharacter modifierFlags:aModifierFlags];
-	return theHotKey ? theHotKey : [self hotKeyWithKeyCharacter:aKeyCharacter modifierFlags:aModifierFlags];
+    
+    return [self getHotKeyForKeyCode:[[NDKeyboardLayout keyboardLayout] keyCodeForCharacter:aKeyCharacter] modifierFlags:aModifierFlags];
 }
 
 + (instancetype)findHotKeyForKeyCode:(UInt16)aKeyCode modifierFlags:(NSUInteger)aModifierFlags
@@ -358,25 +363,24 @@ struct HotKeyMappingEntry
 
 - (instancetype)initWithKeyCode:(UInt16)aKeyCode modifierFlags:(NSUInteger)aModifierFlags target:(id)aTarget selector:(SEL)aSelector
 {
-	return [self initWithKeyCharacter:[[NDKeyboardLayout keyboardLayout] characterForKeyCode:aKeyCode] modifierFlags:aModifierFlags target:aTarget selector:aSelector];
+    if (self = [super init]) {
+        keyCode = aKeyCode;
+        target = aTarget;
+        modifierFlags = aModifierFlags;
+        selectorReleased = aSelector;
+		currentEventType = NDHotKeyNoEvent;
+		isEnabled.collective = YES;
+		[self addHotKey];
+        
+    } else {
+        [self release], self = nil;
+    }
+    return self;
 }
 
 - (instancetype)initWithKeyCharacter:(unichar)aKeyCharacter modifierFlags:(NSUInteger)aModifierFlags target:(id)aTarget selector:(SEL)aSelector
 {
-	if( (self = [super init]) != nil )
-	{
-		keyCharacter = aKeyCharacter;
-		modifierFlags = aModifierFlags;
-		target = aTarget;
-		selectorReleased = aSelector;
-		currentEventType = NDHotKeyNoEvent;
-		isEnabled.collective = YES;
-		[self addHotKey];
-	}
-	else
-		[self release], self = nil;
-
-	return self;
+    return [self initWithKeyCode:[[NDKeyboardLayout keyboardLayout] keyCodeForCharacter:aKeyCharacter] modifierFlags:aModifierFlags target:target selector:aSelector];
 }
 
 - (instancetype)initWithCoder:(NSCoder *)aDecoder
@@ -389,10 +393,10 @@ struct HotKeyMappingEntry
 			if( theValue == nil )
 			{
 				theValue = [aDecoder decodeObjectForKey:kArchivingKeyCodeKey];
-				keyCharacter = [[NDKeyboardLayout keyboardLayout] characterForKeyCode:[theValue unsignedShortValue]];
+//				keyCharacter = [[NDKeyboardLayout keyboardLayout] characterForKeyCode:[theValue unsignedShortValue]];
 			}
-			else
-				keyCharacter = [theValue unsignedShortValue];
+//			else
+//				keyCharacter = [theValue unsignedShortValue];
 			modifierFlags = [[aDecoder decodeObjectForKey:kArchivingModifierFlagsKey] unsignedIntegerValue];
 			
 			selectorReleased = NSSelectorFromString( [aDecoder decodeObjectForKey:kArchivingSelectorReleasedCodeKey] );
@@ -404,10 +408,10 @@ struct HotKeyMappingEntry
 			{
 				unsigned short		theKeyCode;
 				[aDecoder decodeValueOfObjCType:@encode(UInt16) at:&theKeyCode];
-				keyCharacter = [[NDKeyboardLayout keyboardLayout] characterForKeyCode:theKeyCode];
+//				keyCharacter = [[NDKeyboardLayout keyboardLayout] characterForKeyCode:theKeyCode];
 			}
 			else
-				[aDecoder decodeValueOfObjCType:@encode(unichar) at:&keyCharacter];
+//				[aDecoder decodeValueOfObjCType:@encode(unichar) at:&keyCharacter];
 			[aDecoder decodeValueOfObjCType:@encode(NSUInteger) at:&modifierFlags];
 
 			selectorReleased = NSSelectorFromString( [aDecoder decodeObject] );
@@ -424,7 +428,7 @@ struct HotKeyMappingEntry
 {
 	if( [anEncoder allowsKeyedCoding] )
 	{
-		[anEncoder encodeObject:[NSNumber numberWithUnsignedShort:keyCharacter] forKey:kArchivingKeyCharacterKey];
+//		[anEncoder encodeObject:[NSNumber numberWithUnsignedShort:keyCharacter] forKey:kArchivingKeyCharacterKey];
 		[anEncoder encodeObject:[NSNumber numberWithUnsignedInteger:modifierFlags] forKey:kArchivingModifierFlagsKey];
 
 		[anEncoder encodeObject:NSStringFromSelector( selectorReleased ) forKey:kArchivingSelectorReleasedCodeKey];
@@ -432,7 +436,7 @@ struct HotKeyMappingEntry
 	}
 	else
 	{
-		[anEncoder encodeValueOfObjCType:@encode(unichar) at:&keyCharacter];
+//		[anEncoder encodeValueOfObjCType:@encode(unichar) at:&keyCharacter];
 		[anEncoder encodeValueOfObjCType:@encode(NSUInteger) at:&modifierFlags];
 
 		[anEncoder encodeObject:NSStringFromSelector( selectorReleased )];
@@ -649,11 +653,10 @@ struct HotKeyMappingEntry
 	currentEventType = NDHotKeyNoEvent;
 }
 
-- (unichar)keyCharacter { return keyCharacter; }
 - (BOOL)keyPad { return keyPad; }
-- (UInt16)keyCode { return [[NDKeyboardLayout keyboardLayout] keyCodeForCharacter:self.keyCharacter numericPad:self.keyPad]; }
+- (UInt16)keyCode { return keyCode; }
 - (NSUInteger)modifierFlags { return modifierFlags; }
-- (UInt32)hotKeyId { return _idForCharacterAndModifer( self.keyCharacter, self.modifierFlags ); }
+- (UInt32)hotKeyId { return _idForKeyCodeAndModifier( self.keyCode, self.modifierFlags ); }
 - (NSString *)stringValue { return [[NDKeyboardLayout keyboardLayout] stringForKeyCode:[self keyCode] modifierFlags:[self modifierFlags]]; }
 
 - (BOOL)isEqual:(id)anObject
@@ -661,7 +664,7 @@ struct HotKeyMappingEntry
 	return [super isEqual:anObject] || ([anObject isKindOfClass:[self class]] == YES && [self keyCode] == [(NDHotKeyEvent*)anObject keyCode] && [self modifierFlags] == [anObject modifierFlags]);
 }
 
-- (NSUInteger)hash { return (NSUInteger)self.keyCharacter | (self.modifierFlags<<16); }
+- (NSUInteger)hash { return (NSUInteger)self.keyCode | (self.modifierFlags<<16); }
 
 - (NSString *)description
 {
@@ -893,7 +896,7 @@ static OSStatus switchHotKey( NDHotKeyEvent * self, BOOL aFlag )
 
 			NSCAssert( theHotKeyID.signature, @"HotKeyEvent signature has not been set yet" );
 			NSCParameterAssert(sizeof(unsigned long) >= sizeof(id) );
-
+            NSLog(@"keycode: %lu, hotkeys: %lu, %lu", self.keyCode, self->modifierFlags, (NSUInteger)theHotKeyID.id);
 			theError = RegisterEventHotKey( self.keyCode, NDCarbonModifierFlagsForCocoaModifierFlags(self->modifierFlags), theHotKeyID, GetEventDispatcherTarget(), 0, &self->reference );
 		}
 	}

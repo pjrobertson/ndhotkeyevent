@@ -92,8 +92,7 @@ extern const OSType			NDHotKeyDefaultSignature;
 {
 @private
 	EventHotKeyRef		reference;
-	//	UInt16				keyCode;
-	unichar				keyCharacter;
+    UInt16				keyCode;
 	BOOL				keyPad;
 	NSUInteger			modifierFlags;
 	int					currentEventType;
@@ -537,13 +536,6 @@ extern const OSType			NDHotKeyDefaultSignature;
  */
 - (UInt16)keyCode;
 
-/*!
-	@method keyCharacter
-	@abstract Get the hot key character.
-	@discussion This is the character for the key code, without modifier keys. The character is for display purposes only and dose not determine the key code.
-	@result A uni code character.
- */
-- (unichar)keyCharacter;
 
 /*!
 	@method modifierFlags

@@ -350,9 +350,8 @@ void NDKeyboardLayoutNotificationCallback( CFNotificationCenterRef aCenter, void
 {
     id observerId = (id)observer;
     if (CFStringCompare(aName, kTISNotifySelectedKeyboardInputSourceChanged, 0) == 0) {
-        NSDictionary		* theUserInfo = [NSDictionary dictionaryWithObject:kCurrentKeyboardLayout forKey:NDKeyboardLayoutPreviousKeyboardLayoutUserInfoKey];
         @synchronized(observerId) { [kCurrentKeyboardLayout release], kCurrentKeyboardLayout = nil; }
-        [[NSNotificationCenter defaultCenter] postNotificationName:NDKeyboardLayoutSelectedKeyboardInputSourceChangedNotification object:observerId userInfo:theUserInfo];
+        [[NSNotificationCenter defaultCenter] postNotificationName:NDKeyboardLayoutSelectedKeyboardInputSourceChangedNotification object:observerId userInfo:nil];
     } else if (CFStringCompare(aName, kTISNotifyEnabledKeyboardInputSourcesChanged, 0) == 0) {
         [[NSNotificationCenter defaultCenter] postNotificationName:NDKeyboardLayoutSelectedKeyboardInputSourceChangedNotification object:observerId userInfo:nil];
     }
